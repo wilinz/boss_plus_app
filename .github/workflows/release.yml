@@ -1,0 +1,183 @@
+name: Release
+
+# 推送 v* tag 触发:构建 macOS / Windows / Linux / Android 产物并发到 GitHub Release。
+# 手动触发(workflow_dispatch)只构建、上传 Artifact,不发 Release。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------- macOS: .dmg + .zip ----------------
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: 版本号(去掉 v 前缀,非 tag 用 dev)
+        id: ver
+        run: |
+          REF="${GITHUB_REF_NAME}"
+          [[ "$REF" == v* ]] && echo "version=${REF#v}" >> "$GITHUB_OUTPUT" || echo "version=dev" >> "$GITHUB_OUTPUT"
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - name: 打包 DMG 与 ZIP
+        run: |
+          set -euo pipefail
+          VER="${{ steps.ver.outputs.version }}"
+          APP="build/macos/Build/Products/Release/boss_plus_app.app"
+          mkdir -p dist dmg
+          cp -R "$APP" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "BOSS Plus" -srcfolder dmg -ov -format UDZO \
+            "dist/boss_plus_app-${VER}-macos.dmg"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" \
+            "dist/boss_plus_app-${VER}-macos.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+
+  # ---------------- Windows: InnoSetup 安装包 + .zip ----------------
+  windows:
+    runs-on: windows-latest
+    # pdfx 插件在 Windows 上用 CMake 下载编译 pdfium,其 CMakeLists 的
+    # cmake_minimum_required < 3.5 被 runner 的新版 CMake(4.x)拒绝。CMake 会读
+    # 这个环境变量作为最低策略版本的兜底,绕过该报错。
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: 版本号(去掉 v 前缀,非 tag 用 dev)
+        id: ver
+        shell: bash
+        run: |
+          REF="${GITHUB_REF_NAME}"
+          [[ "$REF" == v* ]] && echo "version=${REF#v}" >> "$GITHUB_OUTPUT" || echo "version=dev" >> "$GITHUB_OUTPUT"
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: 打包 ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* `
+            -DestinationPath "dist/boss_plus_app-${{ steps.ver.outputs.version }}-windows.zip" -Force
+      - name: 编译 InnoSetup 安装包
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DMyAppVersion=${{ steps.ver.outputs.version }}" windows\installer.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  # ---------------- Linux: .tar.gz ----------------
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: 版本号(去掉 v 前缀,非 tag 用 dev)
+        id: ver
+        run: |
+          REF="${GITHUB_REF_NAME}"
+          [[ "$REF" == v* ]] && echo "version=${REF#v}" >> "$GITHUB_OUTPUT" || echo "version=dev" >> "$GITHUB_OUTPUT"
+      - name: 安装 Linux 桌面依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev liblzma-dev
+      - run: flutter pub get
+      - run: flutter build linux --release
+      - name: 打包 tar.gz
+        run: |
+          set -euo pipefail
+          VER="${{ steps.ver.outputs.version }}"
+          mkdir -p dist
+          tar -czf "dist/boss_plus_app-${VER}-linux-x64.tar.gz" \
+            -C build/linux/x64/release/bundle .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  # ---------------- Android: .apk(arm64-v8a) ----------------
+  # 无 keystore 时按工程配置用 debug key 签名(可直接侧载安装)。
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: 版本号(去掉 v 前缀,非 tag 用 dev)
+        id: ver
+        run: |
+          REF="${GITHUB_REF_NAME}"
+          [[ "$REF" == v* ]] && echo "version=${REF#v}" >> "$GITHUB_OUTPUT" || echo "version=dev" >> "$GITHUB_OUTPUT"
+      - run: flutter pub get
+      - name: 注入 Android 签名(配了 secret 才用 release 签名,否则回退 debug)
+        env:
+          KS_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KS_BASE64:-}" ]; then
+            echo "未配置 ANDROID_KEYSTORE_BASE64,使用 debug 签名。"
+            exit 0
+          fi
+          # 解码 keystore,并把签名参数写进 $GITHUB_ENV 供后续 flutter build 读取。
+          # 用环境变量而非 local.properties:flutter build 会重写 local.properties。
+          echo "$KS_BASE64" | base64 -d > "$GITHUB_WORKSPACE/android/app/release.jks"
+          {
+            echo "ANDROID_STORE_FILE=$GITHUB_WORKSPACE/android/app/release.jks"
+            echo "ANDROID_STORE_PASSWORD=$KS_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "已注入 release keystore(via env)。"
+      # 只出 arm64-v8a(与 app/build.gradle.kts 的 abiFilters 一致);不加则 Flutter
+      # 会打包 arm64+armeabi-v7a+x86_64 三套 so 的胖 APK(~3 倍大)。
+      - run: flutter build apk --release --target-platform android-arm64
+      - name: 重命名 APK
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "dist/boss_plus_app-${{ steps.ver.outputs.version }}-android-arm64.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+
+  # ---------------- 汇总发布(仅 tag) ----------------
+  release:
+    needs: [macos, windows, linux, android]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true

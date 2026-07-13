@@ -1,0 +1,25 @@
+name: boss_plus
+description: BOSS 直聘(zhipin.com)请求协议引擎(纯 Dart):sp/sig 加密签名 + Dio 拦截器链。
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.0
+
+# Add regular dependencies here.
+dependencies:
+  cookie_jar: ^4.0.9
+  crypto: ^3.0.7
+  dio: ^5.10.0
+  dio_cookie_manager: ^3.4.0
+  mqtt_client: ^10.11.0
+  fixnum: ^1.1.0
+  protobuf: ^4.1.0
+  path: ^1.9.1
+  typed_data: ^1.4.0
+  pointycastle: ^4.0.0
+  # path: ^1.9.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.31.2

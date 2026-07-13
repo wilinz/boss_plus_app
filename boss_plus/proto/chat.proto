@@ -1,0 +1,127 @@
+// BOSS IM 协议(MQTT topic=chat 的 protobuf 信封)。
+//
+// 由官方 App 反编译类 `com.hpbr.bosszhipin.module.contacts.entity.protobuf.ChatProtocol`
+// (内部代号 Techwolf)还原,字段号/类型逐一对齐。详见 docs/boss-im-protocol.md。
+//
+// 用 proto2:生成类带 bitField 存在性语义,发送信封会显式写出 0 值字段
+// (from/to.source=0、message.offline=0 等),与真机抓包字节级一致。
+//
+// 仅还原「文本收发 + 鉴权 + 已读」验证过的子集;其它 content_type 的 body
+// 消息(图片/语音/职位卡…)按需从 ChatProtocol.java 继续补充。
+
+syntax = "proto2";
+
+package techwolf;
+
+// 外层信封。type 决定用哪个 body 字段。
+message TechwolfChatProtocol {
+  optional int32 type = 1;                    // 1聊天 2鉴权(presence) 3请求 4响应 6已读
+  optional string version = 2;                // 发送"1.4" / 接收"1.3"
+  repeated TechwolfMessage messages = 3;      // type=1
+  optional TechwolfPresence presence = 4;     // type=2(鉴权/在线)
+  optional TechwolfMessageRead messageRead = 8; // type=6
+  optional int32 domain = 10;
+}
+
+message TechwolfMessage {
+  optional TechwolfUser from = 1;
+  optional TechwolfUser to = 2;
+  optional int32 type = 3;          // 会话/方向标记
+  optional int64 mid = 4;           // 服务器消息 id(发送时=cmid)
+  optional int64 time = 5;
+  optional TechwolfMessageBody body = 6;
+  optional bool offline = 7;
+  optional bool received = 8;
+  optional string pushText = 9;
+  optional int64 taskId = 10;
+  optional int64 cmid = 11;         // 客户端临时 id(发送时间戳)
+  optional int32 status = 12;
+  optional int32 unCount = 13;
+  optional string pushSound = 14;
+  optional int32 flag = 15;
+  optional bytes encryptedBody = 16;
+  optional string bizId = 17;
+  optional int32 bizType = 18;
+  optional string securityId = 19;
+  optional int64 quoteId = 20;
+}
+
+// 正文。type = content_type(见 docs §10 全表)。文本走 text(f3);
+// 职位卡(type=8)走 jobCard(f10),字段号由抓包还原(docs §21)。
+message TechwolfMessageBody {
+  optional int32 type = 1;          // 1文本 2语音 3图片 8职位卡 …
+  optional int32 templateId = 2;
+  optional string text = 3;
+  optional TechwolfJobCard jobCard = 10;   // type=8 职位卡片正文
+}
+
+// 职位卡片正文(body.f10)。官方聊天页顶部「由你发起的沟通」白卡即渲染此结构。
+message TechwolfJobCard {
+  optional string title = 1;        // 岗位名
+  optional string brand = 2;        // 品牌简称
+  optional string salary = 3;       // 薪资
+  optional string jumpUrl = 4;      // bosszp 深链
+  optional int64 jobId = 5;
+  optional string position = 6;     // 职类
+  optional string experience = 7;   // 经验
+  optional string degree = 8;       // 学历
+  optional string location = 9;     // 地点
+  optional string bossTitle = 10;   // boss 头衔
+  optional TechwolfUser boss = 11;  // boss(name/avatar)
+  optional string footer = 14;      // 底部文案(由你发起的沟通)
+  optional string tag = 15;         // 标签(外地)
+  optional int64 expectId = 19;
+}
+
+message TechwolfUser {
+  optional int64 uid = 1;
+  optional string name = 2;
+  optional string avatar = 3;
+  optional string company = 4;
+  optional string headImg = 5;
+  optional int32 certification = 6;
+  optional int32 source = 7;
+}
+
+// type=2 鉴权/在线(信封 field 4)。
+message TechwolfPresence {
+  optional int32 type = 1;              // 实测 768
+  optional int64 uid = 2;
+  optional TechwolfClientInfo clientInfo = 3;
+  optional TechwolfClientTime clientTime = 4;
+  optional int64 lastMessageId = 5;
+  optional int64 lastGroupMessageId = 6;
+  optional int64 userId = 7;
+}
+
+message TechwolfClientInfo {
+  optional string version = 1;          // "14.070"
+  optional string system = 2;           // "Android"
+  optional string systemVersion = 3;    // "13"
+  optional string model = 4;            // "Redmi||22021211RC"
+  optional string uniqid = 5;
+  optional string network = 6;          // "WIFI"
+  optional int32 appId = 7;             // 1003
+  optional string platform = 8;         // "Android"
+  optional string channel = 9;          // "5"
+  optional string ssid = 10;
+  optional string bssid = 11;
+  optional double longitude = 12;
+  optional double latitude = 13;
+}
+
+message TechwolfClientTime {
+  optional int64 startTime = 1;
+  optional int64 resumeTime = 2;
+  optional int64 locateTime = 3;
+}
+
+// type=6 已读回执(信封 field 8)。
+message TechwolfMessageRead {
+  optional int64 userId = 1;
+  optional int64 messageId = 2;
+  optional int64 readTime = 3;
+  optional bool sync = 4;
+  optional int32 userSource = 5;
+  optional int32 ownerSource = 6;
+}
