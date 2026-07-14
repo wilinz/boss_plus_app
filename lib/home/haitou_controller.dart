@@ -24,13 +24,29 @@ int activeRank(String desc) {
   if (d.contains('周')) return 4; // 本周 / N周内
   if (d.contains('半年')) return d.contains('前') ? 8 : 7; // 前=久,内=较近
   if (d.contains('月')) {
-    // 本月/近1月=本月档;近2~3月=数月档。「内」偏近、「前」偏久同档处理。
-    final m = RegExp(r'(\d+)\s*月').firstMatch(d);
-    final n = d.contains('本月') ? 1 : (m != null ? int.parse(m.group(1)!) : 1);
+    // 本月/近1月=本月档(5);近2~3月=数月档(6)。「内」偏近、「前」偏久同档处理。
+    final n = _monthsIn(d);
     return n <= 1 ? 5 : 6;
   }
   if (d.contains('年')) return d.contains('前') ? 10 : 9;
   return -1; // 话术无法识别 → 交由调用方按「未知放行」处理
+}
+
+/// 从含「月」的活跃描述里解析月数。支持「本月/N月/N个月/中文数字个月」;
+/// 无法确定月数(如「数月」)保守按 2 处理(归入数月档,不误放进本月档)。
+int _monthsIn(String d) {
+  if (d.contains('本月')) return 1;
+  final m = RegExp(r'(\d+)\s*个?\s*月').firstMatch(d); // 2月 / 2个月
+  if (m != null) return int.parse(m.group(1)!);
+  final c = RegExp(r'([一二两三四五六七八九十])\s*个?\s*月').firstMatch(d); // 两个月 / 一月
+  if (c != null) {
+    return const {
+          '一': 1, '两': 2, '二': 2, '三': 3, '四': 4, '五': 5,
+          '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+        }[c.group(1)] ??
+        2;
+  }
+  return 2; // 有「月」但无数字(数月/几月)→ 保守归数月档
 }
 
 /// 海投:循环对推荐职位「发起沟通」,跳过已沟通,可配间隔,显示进度。

@@ -12,7 +12,13 @@ void main() {
       expect(activeRank('本周活跃'), 4);
       expect(activeRank('本月活跃'), 5); // 关键:不再被含「月」误判为久未活跃
       expect(activeRank('近1月活跃'), 5);
+      expect(activeRank('一个月内活跃'), 5);
+      // 关键回归:两个月/2个月内活跃应归「数月档」(6),不能被当成本月档而放行
+      expect(activeRank('两个月内活跃'), 6);
+      expect(activeRank('2个月内活跃'), 6);
+      expect(activeRank('近2月活跃'), 6);
       expect(activeRank('近3月活跃'), 6);
+      expect(activeRank('数月前活跃'), 6);
       expect(activeRank('半年内活跃'), 7);
       expect(activeRank('半年前活跃'), 8);
       expect(activeRank('1年内活跃'), 9);
@@ -32,8 +38,8 @@ void main() {
       for (final d in ['在线', '刚刚活跃', '今日活跃', '3日内活跃', '本周活跃', '本月活跃', '近1月活跃']) {
         expect(pass(d), isTrue, reason: '$d 应放行');
       }
-      // 过滤
-      for (final d in ['近3月活跃', '半年内活跃', '半年前活跃', '1年前活跃']) {
+      // 过滤(含两个月/2个月:本月档放行不了它们)
+      for (final d in ['两个月内活跃', '2个月内活跃', '近3月活跃', '半年内活跃', '半年前活跃', '1年前活跃']) {
         expect(pass(d), isFalse, reason: '$d 应过滤');
       }
     });
