@@ -198,6 +198,33 @@ class HaitouPage extends StatelessWidget {
                     : (v) => c.activeOnly.value = v ?? false,
               ),
             ),
+            // 活跃范围档位(仅在开启「仅活跃」时显示)
+            if (c.activeOnly.value)
+              Padding(
+                padding: const EdgeInsets.only(left: 24, right: 20, bottom: 4),
+                child: Row(
+                  children: [
+                    const Text('活跃范围',
+                        style: TextStyle(fontSize: 13, color: Colors.black54)),
+                    const SizedBox(width: 16),
+                    DropdownButton<int>(
+                      value: c.activeWithin.value,
+                      isDense: true,
+                      style: const TextStyle(fontSize: 13, color: Colors.black87),
+                      items: [
+                        for (final o in HaitouController.activeWithinOptions)
+                          DropdownMenuItem(
+                              value: o.maxRank, child: Text(o.label)),
+                      ],
+                      onChanged: c.running.value
+                          ? null
+                          : (v) {
+                              if (v != null) c.activeWithin.value = v;
+                            },
+                    ),
+                  ],
+                ),
+              ),
             // ---- AI 过滤(OpenAI 兼容)----
             _aiSection(c),
             const SizedBox(height: 4),

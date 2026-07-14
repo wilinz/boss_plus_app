@@ -9,6 +9,30 @@ import '../data/boss_provider.dart';
 import 'ai_filter.dart';
 import 'home_controller.dart';
 
+/// BOSS 活跃描述 → 陈旧度档位(越小越活跃);-1=无法识别。
+///
+/// 只有描述文字可依据,故按 BOSS 的活跃话术有序分级(先近后远,先匹配者优先):
+/// 0在线 1刚刚 2今日 3几日内 4本周 5本月/近1月 6数月 7半年内 8半年前 9一年内 10一年前+。
+/// 关键:先判「日/周/半年」再判「月/年」,避免「本月活跃」被含「月」子串误判为久未活跃。
+int activeRank(String desc) {
+  final d = desc.trim();
+  if (d.isEmpty) return -1;
+  if (d.contains('在线')) return 0;
+  if (d.contains('刚刚')) return 1;
+  if (d.contains('今日') || d.contains('今天')) return 2;
+  if (d.contains('日')) return 3; // N日内 / 近日
+  if (d.contains('周')) return 4; // 本周 / N周内
+  if (d.contains('半年')) return d.contains('前') ? 8 : 7; // 前=久,内=较近
+  if (d.contains('月')) {
+    // 本月/近1月=本月档;近2~3月=数月档。「内」偏近、「前」偏久同档处理。
+    final m = RegExp(r'(\d+)\s*月').firstMatch(d);
+    final n = d.contains('本月') ? 1 : (m != null ? int.parse(m.group(1)!) : 1);
+    return n <= 1 ? 5 : 6;
+  }
+  if (d.contains('年')) return d.contains('前') ? 10 : 9;
+  return -1; // 话术无法识别 → 交由调用方按「未知放行」处理
+}
+
 /// 海投:循环对推荐职位「发起沟通」,跳过已沟通,可配间隔,显示进度。
 ///
 /// 复用首页 [HomeController] 的职位列表与分页(列表拉完自动 loadMore),对每个职位
@@ -47,8 +71,17 @@ class HaitouController extends GetxController {
   final minSalary = 0.obs; // 最低月薪(K),职位低于此值即跳过
   final minScale = 0.obs; // 公司最低规模(人数下限),小于此值即跳过
   final activeOnly = false.obs; // true=仅沟通近期活跃的 BOSS
+  final activeWithin = 5.obs; // 近期活跃截止档位(见 _activeRank):2=今日 4=本周 5=本月
   static const _kMinSalary = 'haitou_min_salary';
   static const _kMinScale = 'haitou_min_scale';
+  static const _kActiveWithin = 'haitou_active_within';
+
+  /// 「近期活跃」可调档位(截止档位 maxRank,见 [_activeRank])。
+  static const activeWithinOptions = <({String label, int maxRank})>[
+    (label: '今日内', maxRank: 2),
+    (label: '本周内', maxRank: 4),
+    (label: '本月内', maxRank: 5),
+  ];
 
   // AI 过滤:用 OpenAI 兼容接口按简历判断职位是否值得投递(仅列表卡信息,批量省 token)。
   final aiEnabled = false.obs;
@@ -107,6 +140,7 @@ class HaitouController extends GetxController {
     minSalary.value = _prefs?.getInt(_kMinSalary) ?? 0;
     minScale.value = _prefs?.getInt(_kMinScale) ?? 0;
     activeOnly.value = _prefs?.getBool(_kActiveOnly) ?? false;
+    activeWithin.value = _prefs?.getInt(_kActiveWithin) ?? 5;
     salaryCtrl.text = minSalary.value == 0 ? '' : '${minSalary.value}';
     aiEnabled.value = _prefs?.getBool(_kAiEnabled) ?? false;
     aiBaseUrlCtrl.text =
@@ -127,6 +161,7 @@ class HaitouController extends GetxController {
     _prefs?.setInt(_kMinSalary, minSalary.value);
     _prefs?.setInt(_kMinScale, minScale.value);
     _prefs?.setBool(_kActiveOnly, activeOnly.value);
+    _prefs?.setInt(_kActiveWithin, activeWithin.value);
     _prefs?.setBool(_kAiEnabled, aiEnabled.value);
     _prefs?.setString(_kAiBaseUrl, aiBaseUrlCtrl.text.trim());
     _prefs?.setString(_kAiKey, aiKeyCtrl.text.trim());
@@ -158,10 +193,11 @@ class HaitouController extends GetxController {
     return m == null ? null : int.parse(m.group(1)!);
   }
 
-  /// 活跃描述是否属于「近期活跃」。空串=未知→放行;含 月/半年/年前 视为久未活跃。
+  /// 活跃描述是否在用户设定的「近期活跃」范围内。无法识别→放行(不误杀)。
   bool _isRecentActive(String desc) {
-    if (desc.isEmpty) return true;
-    return !RegExp(r'(月|半年|年前|年内)').hasMatch(desc);
+    final r = activeRank(desc);
+    if (r < 0) return true;
+    return r <= activeWithin.value;
   }
 
   /// 拆关键词(逗号/顿号/空格分隔,小写)。
