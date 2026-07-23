@@ -46,10 +46,15 @@ class JobFilter {
       );
 
   /// 构建 joblist 的 `filterParams` JSON 串。
+  ///
+  /// `switchCity` 必须随「是否显式换城」变化:选中城市与求职期望城市不同时发 `1`,
+  /// 回落到期望城市才发 `0`。恒发 `0` 会让服务端认为用户没切城市,**忽略 cityCode
+  /// 覆盖**按期望城市返回 —— 即城市过滤失效。
   String buildFilterParams(int defaultCityCode) {
+    final switched = cityCode != null && cityCode != defaultCityCode;
     final fp = <String, dynamic>{
       'cityCode': '${cityCode ?? defaultCityCode}',
-      'switchCity': '0',
+      'switchCity': switched ? '1' : '0',
     };
     if (salary != null) fp['salary'] = salary;
     if (experience != null) fp['experience'] = '[$experience]';
