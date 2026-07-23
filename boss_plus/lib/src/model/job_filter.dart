@@ -27,34 +27,45 @@ class JobFilter {
   /// 学历 code(见 [kDegreeOptions]);null=不限。
   final String? degree;
 
+  /// [cityCode]/[cityName] 传 `null` 表示**清空城市筛选**(回到「全国」),不传则保持原值。
   JobFilter copyWith({
     int? sortType,
-    int? cityCode,
-    String? cityName,
+    Object? cityCode = _keep,
+    Object? cityName = _keep,
     Object? salary = _keep,
     Object? experience = _keep,
     Object? degree = _keep,
   }) =>
       JobFilter(
         sortType: sortType ?? this.sortType,
-        cityCode: cityCode ?? this.cityCode,
-        cityName: cityName ?? this.cityName,
+        cityCode: identical(cityCode, _keep) ? this.cityCode : cityCode as int?,
+        cityName:
+            identical(cityName, _keep) ? this.cityName : cityName as String?,
         salary: identical(salary, _keep) ? this.salary : salary as String?,
         experience:
             identical(experience, _keep) ? this.experience : experience as String?,
         degree: identical(degree, _keep) ? this.degree : degree as String?,
       );
 
+  /// 实际发给 joblist 的 `sortType`。
+  ///
+  /// 实测:「推荐」(0)排序下,服务端把「筛选城市 == 求职期望城市」当作没筛选,回退成
+  /// 全国推荐流(命中 0/30);换「最新」(1)才会真正按该城市过滤(26/30)。选非期望
+  /// 城市时两种排序都正常。故仅在这一组合下自动改用 1,其余保持用户所选排序。
+  int effectiveSortType(int defaultCityCode) =>
+      (sortType == 0 && cityCode != null && cityCode == defaultCityCode)
+          ? 1
+          : sortType;
+
   /// 构建 joblist 的 `filterParams` JSON 串。
   ///
-  /// `switchCity` 必须随「是否显式换城」变化:选中城市与求职期望城市不同时发 `1`,
-  /// 回落到期望城市才发 `0`。恒发 `0` 会让服务端认为用户没切城市,**忽略 cityCode
-  /// 覆盖**按期望城市返回 —— 即城市过滤失效。
+  /// `switchCity` 表示「用户是否显式选了城市」:只要选了城市就发 `1`(不论是否与求职
+  /// 期望城市相同);没选、回落到期望城市才发 `0`。恒发 `0` 会让服务端认为用户没切
+  /// 城市,**忽略 cityCode 覆盖**按期望城市返回 —— 即城市过滤失效。
   String buildFilterParams(int defaultCityCode) {
-    final switched = cityCode != null && cityCode != defaultCityCode;
     final fp = <String, dynamic>{
       'cityCode': '${cityCode ?? defaultCityCode}',
-      'switchCity': switched ? '1' : '0',
+      'switchCity': cityCode != null ? '1' : '0',
     };
     if (salary != null) fp['salary'] = salary;
     if (experience != null) fp['experience'] = '[$experience]';

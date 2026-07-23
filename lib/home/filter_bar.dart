@@ -7,19 +7,18 @@ class JobFilterBar extends StatelessWidget {
     super.key,
     required this.filter,
     required this.onChanged,
-    required this.defaultCityName,
   });
 
   final JobFilter filter;
   final ValueChanged<JobFilter> onChanged;
-  final String defaultCityName;
 
   @override
   Widget build(BuildContext context) {
     final sortLabel =
         kSortOptions.firstWhere((o) => o.value == filter.sortType).label;
-    final cityLabel = filter.cityName ??
-        (defaultCityName.isNotEmpty ? defaultCityName : '城市');
+    // 没选城市时服务端返回的是全国推荐流(不是求职期望城市),所以标签就显示「全国」,
+    // 不要拿期望城市名冒充,否则与实际结果不符。
+    final cityLabel = filter.cityName ?? '全国';
     final salaryLabel =
         kSalaryOptions.firstWhere((o) => o.code == filter.salary).label;
     final expLabel =
@@ -125,23 +124,24 @@ class JobFilterBar extends StatelessWidget {
             .toList(),
       );
 
-  /// 「全国」城市码(取消城市限制,推荐不再局限期望城市)。
-  static const _allCityCode = 100010000;
-
   void _pickCity(BuildContext context) => _sheet(
         context,
         '选择城市',
         [
-          (code: _allCityCode, name: '全国(不限)'),
-          ...kCityOptions,
-        ]
-            .map((o) => (
-                  label: o.name,
-                  selected: filter.cityCode == o.code,
-                  onTap: () => onChanged(
-                      filter.copyWith(cityCode: o.code, cityName: o.name)),
-                ))
-            .toList(),
+          // 「全国」= 清空城市筛选。不能传 100010000 之类的「全国码」——实测返回 0 条。
+          (
+            label: '全国(不限)',
+            selected: filter.cityCode == null,
+            onTap: () =>
+                onChanged(filter.copyWith(cityCode: null, cityName: null)),
+          ),
+          ...kCityOptions.map((o) => (
+                label: o.name,
+                selected: filter.cityCode == o.code,
+                onTap: () => onChanged(
+                    filter.copyWith(cityCode: o.code, cityName: o.name)),
+              )),
+        ],
       );
 
   void _pickSalary(BuildContext context) => _sheet(

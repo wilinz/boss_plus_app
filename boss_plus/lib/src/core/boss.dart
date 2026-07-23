@@ -307,7 +307,7 @@ class Boss extends BaseClient {
       queryParameters: {
         'encryptExpectId': expect.encryptExpectId,
         'expectId': '${expect.expectId}',
-        'sortType': '${filter.sortType}',
+        'sortType': '${filter.effectiveSortType(expect.cityCode)}',
         'page': '$page',
         'pageSize': '$pageSize',
         'jobType': '0',

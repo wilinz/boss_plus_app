@@ -74,7 +74,6 @@ class HomePage extends StatelessWidget {
                 // 筛选栏:排序 / 城市 / 薪资 / 经验 / 学历
                 JobFilterBar(
                   filter: c.filter.value,
-                  defaultCityName: c.geek.value?.expect?.cityName ?? '',
                   onChanged: c.applyFilter,
                 ),
                 const SizedBox(height: 8),
