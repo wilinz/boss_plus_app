@@ -84,32 +84,22 @@ const List<({int value, String label})> kSortOptions = [
   (value: 1, label: '最新'),
 ];
 
-/// 城市选项(code 为 BOSS 城市编码)。
-const List<({int code, String name})> kCityOptions = [
-  (code: 101280100, name: '广州'),
-  (code: 101280600, name: '深圳'),
-  (code: 101010100, name: '北京'),
-  (code: 101020100, name: '上海'),
-  (code: 101210100, name: '杭州'),
-  (code: 101270100, name: '成都'),
-  (code: 101200100, name: '武汉'),
-  (code: 101190100, name: '南京'),
-];
-
-/// 薪资区间(code 为 BOSS 薪资筛选编码)。
+/// 薪资区间(code 来自官方 filter/data,单选)。
 const List<({String? code, String label})> kSalaryOptions = [
   (code: null, label: '不限'),
-  (code: '404', label: '5-10K'),
-  (code: '405', label: '10-20K'),
-  (code: '406', label: '20-50K'),
-  (code: '407', label: '50K以上'),
+  (code: '429', label: '8K以下'),
+  (code: '430', label: '8-12K'),
+  (code: '431', label: '12-16K'),
+  (code: '432', label: '16-20K'),
+  (code: '433', label: '20-25K'),
+  (code: '434', label: '25K以上'),
 ];
 
-/// 经验筛选项(可多选)。code 为 BOSS 经验编码;108=应届生、102=在校生,其余来自真机
-/// 职位数据。用于 filterParams.experience 数组。
+/// 经验筛选项(可多选)。code 来自官方 filter/data:108=在校生、102=应届生
+/// (注意:不是直觉的反过来)。用于 filterParams.experience(逗号分隔)。
 const List<({String code, String label})> kExperienceOptions = [
-  (code: '102', label: '在校生'),
-  (code: '108', label: '应届生'),
+  (code: '108', label: '在校生'),
+  (code: '102', label: '应届生'),
   (code: '103', label: '1年以内'),
   (code: '104', label: '1-3年'),
   (code: '105', label: '3-5年'),

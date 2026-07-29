@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:window_size/window_size.dart';
 
+import 'data/city_repo.dart';
 import 'data/device_profile_repo.dart';
 import 'login/login_page.dart';
 
@@ -12,6 +13,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _setupDesktopWindow();
   await DeviceProfileRepo.instance.load(); // 内嵌真实设备库,供指纹随机派生用
+  await CityRepo.instance.load(); // 内嵌全量城市库,供城市筛选用
   runApp(const BossPlusApp());
 }
 

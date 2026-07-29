@@ -2,6 +2,8 @@ import 'package:boss_plus/boss_plus.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
+import '../data/city_repo.dart';
+
 /// 职位筛选栏:排序 / 城市 / 薪资 / 经验 / 学历,点开底部选择。
 class JobFilterBar extends StatelessWidget {
   const JobFilterBar({
@@ -132,24 +134,97 @@ class JobFilterBar extends StatelessWidget {
             .toList(),
       );
 
-  void _pickCity(BuildContext context) => _sheet(
-        context,
-        '选择城市',
-        [
-          // 「全国」= 清空城市筛选。不能传 100010000 之类的「全国码」——实测返回 0 条。
-          (
-            label: '全国(不限)',
-            selected: filter.cityCode == null,
-            onTap: () =>
-                onChanged(filter.copyWith(cityCode: null, cityName: null)),
-          ),
-          ...kCityOptions.map((o) => (
-                label: o.name,
-                selected: filter.cityCode == o.code,
-                onTap: () => onChanged(
-                    filter.copyWith(cityCode: o.code, cityName: o.name)),
-              )),
-        ],
+  /// 城市选择:全量城市库(373 城)+ 搜索;顶部「全国」清空、热门城市快选。
+  Future<void> _pickCity(BuildContext context) async {
+    var q = '';
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          final repo = CityRepo.instance;
+          final results = repo.search(q);
+          void pick(int? code, String? name) {
+            onChanged(filter.copyWith(cityCode: code, cityName: name));
+            Navigator.of(ctx).pop();
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: SizedBox(
+              height: MediaQuery.of(ctx).size.height * 0.7,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: TextField(
+                      autofocus: false,
+                      decoration: const InputDecoration(
+                        hintText: '搜索城市(名称/拼音)',
+                        prefixIcon: Icon(Icons.search),
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (v) => setSheet(() => q = v),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        if (q.isEmpty) ...[
+                          ListTile(
+                            dense: true,
+                            title: const Text('全国(不限)'),
+                            trailing: filter.cityCode == null
+                                ? const Icon(Icons.check,
+                                    color: Color(0xFF00A6A7))
+                                : null,
+                            onTap: () => pick(null, null),
+                          ),
+                          if (repo.hot.isNotEmpty)
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                              child: Text('热门城市',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.grey)),
+                            ),
+                          for (final c in repo.hot) _cityTile(c, pick),
+                          const Divider(height: 1),
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                            child: Text('全部城市',
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.grey)),
+                          ),
+                        ],
+                        for (final c in results) _cityTile(c, pick),
+                        if (results.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Center(
+                                child: Text('无匹配城市',
+                                    style: TextStyle(color: Colors.grey))),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _cityTile(City c, void Function(int?, String?) pick) => ListTile(
+        dense: true,
+        title: Text(c.name),
+        trailing: filter.cityCode == c.code
+            ? const Icon(Icons.check, color: Color(0xFF00A6A7))
+            : null,
+        onTap: () => pick(c.code, c.name),
       );
 
   void _pickSalary(BuildContext context) => _sheet(
