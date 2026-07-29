@@ -1,4 +1,5 @@
 import 'package:boss_plus/boss_plus.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 /// 职位筛选栏:排序 / 城市 / 薪资 / 经验 / 学历,点开底部选择。
@@ -21,8 +22,15 @@ class JobFilterBar extends StatelessWidget {
     final cityLabel = filter.cityName ?? '全国';
     final salaryLabel =
         kSalaryOptions.firstWhere((o) => o.code == filter.salary).label;
-    final expLabel =
-        kExperienceOptions.firstWhere((o) => o.code == filter.experience).label;
+    // 经验可多选:空=「经验」,选 1 个显示其名,多个显示「经验(N)」。
+    final expLabel = switch (filter.experience.length) {
+      0 => '经验',
+      1 => kExperienceOptions
+          .firstWhere((o) => o.code == filter.experience.first,
+              orElse: () => (code: '', label: '经验'))
+          .label,
+      final n => '经验($n)',
+    };
     final degLabel =
         kDegreeOptions.firstWhere((o) => o.code == filter.degree).label;
 
@@ -36,8 +44,8 @@ class JobFilterBar extends StatelessWidget {
               () => _pickCity(context)),
           _item(context, salaryLabel == '不限' ? '薪资' : salaryLabel,
               filter.salary != null, () => _pickSalary(context)),
-          _item(context, expLabel == '不限' ? '经验' : expLabel,
-              filter.experience != null, () => _pickExperience(context)),
+          _item(context, expLabel, filter.experience.isNotEmpty,
+              () => _pickExperience(context)),
           _item(context, degLabel == '不限' ? '学历' : degLabel,
               filter.degree != null, () => _pickDegree(context)),
         ],
@@ -156,17 +164,84 @@ class JobFilterBar extends StatelessWidget {
             .toList(),
       );
 
-  void _pickExperience(BuildContext context) => _sheet(
+  void _pickExperience(BuildContext context) => _multiSheet(
         context,
-        '工作经验',
-        kExperienceOptions
-            .map((o) => (
-                  label: o.label,
-                  selected: filter.experience == o.code,
-                  onTap: () => onChanged(filter.copyWith(experience: o.code)),
-                ))
-            .toList(),
+        '工作经验(可多选)',
+        kExperienceOptions.map((o) => (code: o.code, label: o.label)).toList(),
+        filter.experience.toSet(),
+        (codes) => onChanged(filter.copyWith(experience: codes.toList())),
       );
+
+  /// 多选底部弹窗:勾选/清空只改临时集合,**关闭时**才一次性回调(避免边选边重载列表)。
+  Future<void> _multiSheet(
+    BuildContext context,
+    String title,
+    List<({String code, String label})> options,
+    Set<String> initial,
+    ValueChanged<Set<String>> onApply,
+  ) async {
+    final picked = {...initial};
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheet) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+                child: Row(
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: picked.isEmpty
+                          ? null
+                          : () => setSheet(picked.clear),
+                      child: const Text('清空'),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final o in options)
+                      CheckboxListTile(
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: Text(o.label),
+                        value: picked.contains(o.code),
+                        onChanged: (v) => setSheet(() => v == true
+                            ? picked.add(o.code)
+                            : picked.remove(o.code)),
+                      ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('完成'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    // 关闭后:选择有变化才应用(触发一次列表重载)。
+    if (!setEquals(picked, initial)) onApply(picked);
+  }
 
   void _pickDegree(BuildContext context) => _sheet(
         context,

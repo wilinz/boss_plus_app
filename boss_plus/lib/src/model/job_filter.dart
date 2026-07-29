@@ -7,7 +7,7 @@ class JobFilter {
     this.cityCode,
     this.cityName,
     this.salary,
-    this.experience,
+    this.experience = const [],
     this.degree,
   });
 
@@ -21,8 +21,9 @@ class JobFilter {
   /// 薪资 code(见 [kSalaryOptions]);null=不限。
   final String? salary;
 
-  /// 经验 code(见 [kExperienceOptions]);null=不限。
-  final String? experience;
+  /// 经验 code(见 [kExperienceOptions]),**可多选**;空 = 不限。
+  /// filterParams 里发数组 `[108,102]`,服务端做「或」匹配。
+  final List<String> experience;
 
   /// 学历 code(见 [kDegreeOptions]);null=不限。
   final String? degree;
@@ -33,7 +34,7 @@ class JobFilter {
     Object? cityCode = _keep,
     Object? cityName = _keep,
     Object? salary = _keep,
-    Object? experience = _keep,
+    List<String>? experience,
     Object? degree = _keep,
   }) =>
       JobFilter(
@@ -42,8 +43,7 @@ class JobFilter {
         cityName:
             identical(cityName, _keep) ? this.cityName : cityName as String?,
         salary: identical(salary, _keep) ? this.salary : salary as String?,
-        experience:
-            identical(experience, _keep) ? this.experience : experience as String?,
+        experience: experience ?? this.experience,
         degree: identical(degree, _keep) ? this.degree : degree as String?,
       );
 
@@ -67,9 +67,11 @@ class JobFilter {
       'cityCode': '${cityCode ?? defaultCityCode}',
       'switchCity': cityCode != null ? '1' : '0',
     };
+    // 经验/学历是**逗号分隔的裸串**(如 "108,102"),不能加方括号 —— 带 `[]`
+    // 服务端不认,过滤直接失效(实测:"108,102"→全在校/应届,"[108,102]"→无效)。
     if (salary != null) fp['salary'] = salary;
-    if (experience != null) fp['experience'] = '[$experience]';
-    if (degree != null) fp['degree'] = '[$degree]';
+    if (experience.isNotEmpty) fp['experience'] = experience.join(',');
+    if (degree != null) fp['degree'] = degree;
     return jsonEncode(fp);
   }
 
@@ -103,9 +105,10 @@ const List<({String? code, String label})> kSalaryOptions = [
   (code: '407', label: '50K以上'),
 ];
 
-/// 经验(code 来自真机职位数据)。
-const List<({String? code, String label})> kExperienceOptions = [
-  (code: null, label: '不限'),
+/// 经验筛选项(可多选)。code 为 BOSS 经验编码;108=应届生、102=在校生,其余来自真机
+/// 职位数据。用于 filterParams.experience 数组。
+const List<({String code, String label})> kExperienceOptions = [
+  (code: '102', label: '在校生'),
   (code: '108', label: '应届生'),
   (code: '103', label: '1年以内'),
   (code: '104', label: '1-3年'),

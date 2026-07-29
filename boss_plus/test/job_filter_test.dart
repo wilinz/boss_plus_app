@@ -66,11 +66,23 @@ void main() {
 
     test('其它筛选项照常带上', () {
       final m = fp(const JobFilter(
-          cityCode: 101010100, salary: '405', experience: '104', degree: '203'));
+          cityCode: 101010100, salary: '405', experience: ['104'], degree: '203'));
       expect(m['switchCity'], '1');
       expect(m['salary'], '405');
-      expect(m['experience'], '[104]');
-      expect(m['degree'], '[203]');
+      expect(m['experience'], '104');
+      expect(m['degree'], '203');
+    });
+
+    test('经验多选:发数组「或」匹配;空则不带 experience', () {
+      // 在校生 + 应届生
+      expect(fp(const JobFilter(experience: ['108', '102']))['experience'],
+          '108,102');
+      // 空 = 不限,不带该字段
+      expect(fp(const JobFilter()).containsKey('experience'), isFalse);
+      // copyWith 传空列表可清空
+      const picked = JobFilter(experience: ['104']);
+      expect(fp(picked.copyWith(experience: const []))
+          .containsKey('experience'), isFalse);
     });
   });
 }
