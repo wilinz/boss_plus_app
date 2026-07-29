@@ -88,6 +88,51 @@ class HaitouPage extends StatelessWidget {
                 ],
               ),
             ),
+            // ---- 目标数量 / 限流休息 ----
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Text('目标数量', style: TextStyle(fontSize: 13)),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 64,
+                    child: TextFormField(
+                      initialValue: '${c.targetCount.value}',
+                      enabled: !c.running.value,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(fontSize: 13),
+                      decoration: const InputDecoration(
+                          isDense: true, suffixText: '个'),
+                      onChanged: (v) =>
+                          c.targetCount.value = int.tryParse(v.trim()) ?? 0,
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  const Text('限流休息', style: TextStyle(fontSize: 13)),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 64,
+                    child: TextFormField(
+                      initialValue: '${c.restSeconds.value}',
+                      enabled: !c.running.value,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(fontSize: 13),
+                      decoration: const InputDecoration(
+                          isDense: true, suffixText: 's'),
+                      onChanged: (v) =>
+                          c.restSeconds.value = int.tryParse(v.trim()) ?? 300,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 2, 16, 0),
+              child: Text('触发「操作过于频繁」会自动休息后重投该职位,不中断;'
+                  '达到目标数量或平台每日上限才停。',
+                  style: TextStyle(fontSize: 11, color: Colors.grey)),
+            ),
             // ---- 关键词过滤 ----
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -246,7 +291,7 @@ class HaitouPage extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('已沟通的职位会自动跳过;触发平台限流会自动停止。',
+                child: Text('已沟通的职位会自动跳过;触发限流会自动休息后继续。',
                     style: TextStyle(fontSize: 12, color: Colors.grey)),
               ),
             ),

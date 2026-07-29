@@ -49,11 +49,24 @@ int _monthsIn(String d) {
   return 2; // 有「月」但无数字(数月/几月)→ 保守归数月档
 }
 
+/// 服务端提示是否为「今日已达上限」——要等到明天,休息重试没意义,必须停。
+///
+/// 实测话术:「您今天已与150位BOSS沟通,休息一下,明天再来吧～」「今日沟通已达上限」。
+/// 注意它同样含「休息」,所以必须**先于**临时限流(操作过于频繁)判断,否则会被误当成
+/// 可恢复的限流而空等重试。
+bool isDailyCapMessage(String msg) =>
+    msg.contains('上限') ||
+    msg.contains('明天') ||
+    msg.contains('今天已') ||
+    msg.contains('今日已');
+
 /// 海投:循环对推荐职位「发起沟通」,跳过已沟通,可配间隔,显示进度。
 ///
 /// 复用首页 [HomeController] 的职位列表与分页(列表拉完自动 loadMore),对每个职位
 /// 走官方流程 detail → `startChat`。已沟通职位(本地持久化集合,按 encryptJobId 记)直接跳过。
-/// 触发服务端限流(消息含「上限/频繁/限制」)即停,避免封号。
+/// 限流处理:「每日上限」直接停;「操作过于频繁」等临时限流则退回该职位、休息后重投
+/// (按次数退避),投满 [targetCount] 才收工。所有 BOSS 请求(含被过滤职位的详情、翻页)
+/// 都限速,避免连打接口把限流打出来。
 class HaitouController extends GetxController {
   /// 常驻单例:脱离页面存在,切到别的页面/tab 也继续跑。
   static HaitouController get to => Get.isRegistered<HaitouController>()
@@ -130,6 +143,15 @@ class HaitouController extends GetxController {
   // 沟通间隔:每次在 [minInterval, maxInterval] 秒内随机取值(避免固定节奏被风控)。
   final minInterval = 8.obs;
   final maxInterval = 15.obs;
+
+  /// 目标沟通数,达到即停(0=不限)。平台每日上限约 150。
+  final targetCount = 150.obs;
+  /// 触发「操作过于频繁」后的基础休息时长(秒);连续触发按倍数退避。
+  final restSeconds = 300.obs;
+  /// 连续限流最多休息这么多次,仍不行才停(防止无意义死循环)。
+  static const _maxRestRounds = 10;
+  static const _kTargetCount = 'haitou_target_count';
+  static const _kRestSeconds = 'haitou_rest_seconds';
   final logs = <String>[].obs;
 
   final _rand = Random();
@@ -157,6 +179,8 @@ class HaitouController extends GetxController {
     minScale.value = _prefs?.getInt(_kMinScale) ?? 0;
     activeOnly.value = _prefs?.getBool(_kActiveOnly) ?? false;
     activeWithin.value = _prefs?.getInt(_kActiveWithin) ?? 5;
+    targetCount.value = _prefs?.getInt(_kTargetCount) ?? 150;
+    restSeconds.value = _prefs?.getInt(_kRestSeconds) ?? 300;
     salaryCtrl.text = minSalary.value == 0 ? '' : '${minSalary.value}';
     aiEnabled.value = _prefs?.getBool(_kAiEnabled) ?? false;
     aiBaseUrlCtrl.text =
@@ -178,6 +202,8 @@ class HaitouController extends GetxController {
     _prefs?.setInt(_kMinScale, minScale.value);
     _prefs?.setBool(_kActiveOnly, activeOnly.value);
     _prefs?.setInt(_kActiveWithin, activeWithin.value);
+    _prefs?.setInt(_kTargetCount, targetCount.value);
+    _prefs?.setInt(_kRestSeconds, restSeconds.value);
     _prefs?.setBool(_kAiEnabled, aiEnabled.value);
     _prefs?.setString(_kAiBaseUrl, aiBaseUrlCtrl.text.trim());
     _prefs?.setString(_kAiKey, aiKeyCtrl.text.trim());
@@ -366,6 +392,23 @@ class HaitouController extends GetxController {
 
   void stop() => running.value = false;
 
+  /// 可中断等待(每秒检查 [running],stop 后立即退出)。
+  Future<void> _sleep(int seconds) async {
+    for (var i = 0; i < seconds && running.value; i++) {
+      await Future.delayed(const Duration(seconds: 1));
+    }
+  }
+
+  /// 已请求过 BOSS 接口(详情/翻页)但没发起沟通时的轻量间隔。
+  ///
+  /// 被过滤的职位此前直接 `continue`,详情接口会被连续快打 → 触发「操作过于频繁」。
+  /// 取沟通间隔的 1/3(下限 2s)给这些请求限速。
+  Future<void> _paceRequest() async {
+    final lo = (minInterval.value / 3).ceil().clamp(2, 10);
+    final hi = (maxInterval.value / 3).ceil().clamp(lo, 15);
+    await _sleep(lo + _rand.nextInt(hi - lo + 1));
+  }
+
   Future<void> start() async {
     if (running.value) return;
     _saveKeywords();
@@ -386,12 +429,19 @@ class HaitouController extends GetxController {
   Future<void> _run() async {
     final boss = await BossProvider.instance.get();
     var consecutiveFail = 0;
+    var restRounds = 0; // 连续触发限流的次数(用于退避与兜底停止)
     while (running.value) {
+      // 达到目标即停(平台每日上限约 150)。
+      if (targetCount.value > 0 && done.value >= targetCount.value) {
+        _log('🎯 已投满 ${done.value} 个,达到目标');
+        break;
+      }
       // 列表拉完了 → 翻页;无更多则结束。
       if (_cursor >= home.jobs.length) {
         if (home.hasMore.value) {
           current.value = '加载更多职位…';
           await home.loadMore();
+          await _paceRequest(); // 翻页也是 BOSS 请求,别紧接着再打详情
           if (_cursor >= home.jobs.length) {
             _log('没有更多职位了');
             break;
@@ -485,6 +535,7 @@ class HaitouController extends GetxController {
             !_isRecentActive(d.bossActiveDesc)) {
           filtered.value++;
           _log('🚫 过滤(不活跃 ${d.bossActiveDesc}): ${job.jobName}');
+          await _paceRequest();
           continue;
         }
         // 详情正文关键词过滤:用独立的一组关键词,匹配职位描述/标签/行业/公司全名。
@@ -497,11 +548,13 @@ class HaitouController extends GetxController {
           if (dEx.any(detailHay.contains)) {
             filtered.value++;
             _log('🚫 过滤(详情含排除词): ${job.jobName}');
+            await _paceRequest();
             continue;
           }
           if (dInc.isNotEmpty && !dInc.any(detailHay.contains)) {
             filtered.value++;
             _log('🚫 过滤(详情不含关键词): ${job.jobName}');
+            await _paceRequest();
             continue;
           }
         }
@@ -520,12 +573,27 @@ class HaitouController extends GetxController {
           await _saveContacted();
           _log('✅ ${job.jobName} @ ${job.brandName}');
           consecutiveFail = 0;
-        } else if (msg.contains('上限') ||
-            msg.contains('频繁') ||
-            msg.contains('限制') ||
-            msg.contains('太快')) {
-          _log('🛑 触发限制,已停止:$msg');
+          restRounds = 0;
+        } else if (isDailyCapMessage(msg)) {
+          // 每日沟通上限:要等到明天,休息重试没意义,直接收工。
+          _log('🏁 今日已达平台上限,收工:$msg');
           break;
+        } else if (msg.contains('频繁') ||
+            msg.contains('限制') ||
+            msg.contains('太快') ||
+            msg.contains('过快') ||
+            msg.contains('稍后')) {
+          // 临时限流:退回这个职位,休息后重投,不中断整轮海投。
+          _cursor--;
+          restRounds++;
+          if (restRounds > _maxRestRounds) {
+            _log('🛑 连续限流 $restRounds 次仍未恢复,停止');
+            break;
+          }
+          final wait = restSeconds.value * (restRounds > 3 ? 3 : restRounds);
+          _log('😴 触发限流(第 $restRounds 次),休息 ${wait}s 后继续:$msg');
+          await _sleep(wait);
+          continue;
         } else if (msg.contains('已') &&
             (msg.contains('沟通') || msg.contains('聊'))) {
           // 已沟通过 → 记录并跳过(不等间隔)。
@@ -557,9 +625,7 @@ class HaitouController extends GetxController {
         final hi = maxInterval.value < lo ? lo : maxInterval.value;
         final iv = lo + _rand.nextInt(hi - lo + 1);
         _log('⏳ 等待 ${iv}s');
-        for (var i = 0; i < iv && running.value; i++) {
-          await Future.delayed(const Duration(seconds: 1));
-        }
+        await _sleep(iv);
       }
     }
   }

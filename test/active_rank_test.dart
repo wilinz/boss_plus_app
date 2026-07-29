@@ -44,6 +44,16 @@ void main() {
       }
     });
 
+    test('每日上限 vs 临时限流:必须区分,否则空等重试', () {
+      // 每日上限(要等明天)→ 收工。注意它也含「休息」,不能被临时限流误吞。
+      expect(isDailyCapMessage('您今天已与150位BOSS沟通，休息一下，明天再来吧～'), isTrue);
+      expect(isDailyCapMessage('今日沟通已达上限'), isTrue);
+      expect(isDailyCapMessage('已达每日上限'), isTrue);
+      // 临时限流(休息后可恢复)→ 不能判成每日上限
+      expect(isDailyCapMessage('您的操作过于频繁，休息一会再试吧～'), isFalse);
+      expect(isDailyCapMessage('操作太快，请稍后再试'), isFalse);
+    });
+
     test('阈值语义:今日档(maxRank=2)只放行今日及更近', () {
       const today = 2;
       bool pass(String d) => activeRank(d) <= today && activeRank(d) >= 0;
