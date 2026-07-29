@@ -144,6 +144,7 @@ class ContactListController extends GetxController {
     final cached = ChatStore.instance.conversations;
     if (cached.isNotEmpty) {
       contacts.assignAll(cached.map(Contact.fromStore));
+      _sortByTime();
       loading.value = false;
     }
     load();
@@ -156,6 +157,11 @@ class ContactListController extends GetxController {
   /// 会话列表持久化到本地。
   void _persist() =>
       ChatStore.instance.saveConversations(contacts.map((c) => c.toStore()).toList());
+
+  /// 按最后消息时间倒序(最新在上)。分页/填预览/缓存后都需重排 —— 会话来源 id
+  /// 是按类型分组的,并非全局时间序,不排就会出现「7月19、23、24…」乱序。
+  void _sortByTime() =>
+      contacts.sort((a, b) => b.datetime.compareTo(a.datetime));
 
   void _onMessage(ImMessage m) {
     if (m.text == null) return;
@@ -265,6 +271,7 @@ class ContactListController extends GetxController {
       if (m != null && _loadedIds.add(id)) cs.add(Contact.fromMap(m));
     }
     contacts.addAll(cs);
+    _sortByTime();
     hasMore.value = _zi < _zp.length || _di < _dz.length || _pi < _peer.length;
     _persist();
     // 后台补最近消息预览(不阻塞)。
@@ -296,12 +303,15 @@ class ContactListController extends GetxController {
         final pick = lastText ?? all.last;
         ct.lastMessage = _preview(pick);
         ct.lastMine = pick.fromUid != ct.friendId;
+        // 用真正最新一条(任意类型)的时间校准会话时间,让排序更准。
+        if (all.last.time > ct.datetime) ct.datetime = all.last.time;
         // 用这段历史算未读(比已读水位新的对方消息)。
         if (Get.isRegistered<ImService>()) {
           ImService.to.applyHistory(ct.friendId, all);
         }
       } catch (_) {}
     }));
+    _sortByTime();
     contacts.refresh();
     _persist();
   }
