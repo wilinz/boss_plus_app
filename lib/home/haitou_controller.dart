@@ -409,8 +409,20 @@ class HaitouController extends GetxController {
     await _sleep(lo + _rand.nextInt(hi - lo + 1));
   }
 
+  /// 清零本轮进度(计数 + 游标),保留已沟通去重集合 [_contacted]。
+  /// 单例常驻,上一轮跑完的计数会残留;每次开新一轮前必须清,否则
+  /// done 仍等于 targetCount 会被「达到目标」直接判满、无法投。
+  void _resetProgress() {
+    done.value = 0;
+    skipped.value = 0;
+    filtered.value = 0;
+    failed.value = 0;
+    _cursor = 0;
+  }
+
   Future<void> start() async {
     if (running.value) return;
+    _resetProgress();
     _saveKeywords();
     _aiVerdicts.clear();
     running.value = true;
