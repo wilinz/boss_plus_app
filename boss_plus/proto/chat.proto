@@ -19,8 +19,23 @@ message TechwolfChatProtocol {
   optional string version = 2;                // 发送"1.4" / 接收"1.3"
   repeated TechwolfMessage messages = 3;      // type=1
   optional TechwolfPresence presence = 4;     // type=2(鉴权/在线)
+  optional TechwolfIq iq = 5;                  // type=3 请求(HTTP over MQTT)
+  optional TechwolfIq iqResponse = 6;          // type=4 响应(同结构:qid/query/results)
   optional TechwolfMessageRead messageRead = 8; // type=6
   optional int32 domain = 10;
+}
+
+// type=3 请求 / type=4 响应(信封 field 5 / 6)。请求与响应同构:qid(时间戳或请求id) + query(接口路径,如 /message/syncAll、/message/pull) +
+// 键值对数组(请求叫 params、响应叫 results,wire 一致)。见 docs §3。
+message TechwolfIq {
+  optional int64 qid = 1;                      // 时间戳(ms)/请求 id
+  optional string query = 2;                   // 接口路径
+  repeated TechwolfStringPair params = 3;      // 请求 params / 响应 results
+}
+
+message TechwolfStringPair {
+  optional string key = 1;
+  optional string value = 2;
 }
 
 message TechwolfMessage {

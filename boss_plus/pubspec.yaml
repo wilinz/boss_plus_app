@@ -14,7 +14,7 @@ dependencies:
   dio_cookie_manager: ^3.4.0
   mqtt_client: ^10.11.0
   fixnum: ^1.1.0
-  protobuf: ^4.1.0
+  protobuf: ^6.0.0
   path: ^1.9.1
   typed_data: ^1.4.0
   pointycastle: ^4.0.0

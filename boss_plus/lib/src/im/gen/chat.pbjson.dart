@@ -1,13 +1,15 @@
+// This is a generated file - do not edit.
 //
-//  Generated code. Do not modify.
-//  source: chat.proto
-//
+// Generated from chat.proto.
+
 // @dart = 3.3
 
 // ignore_for_file: annotate_overrides, camel_case_types, comment_references
-// ignore_for_file: constant_identifier_names, library_prefixes
-// ignore_for_file: non_constant_identifier_names, prefer_final_fields
-// ignore_for_file: unnecessary_import, unnecessary_this, unused_import
+// ignore_for_file: constant_identifier_names
+// ignore_for_file: curly_braces_in_flow_control_structures
+// ignore_for_file: deprecated_member_use_from_same_package, library_prefixes
+// ignore_for_file: non_constant_identifier_names, prefer_relative_imports
+// ignore_for_file: unused_import
 
 import 'dart:convert' as $convert;
 import 'dart:core' as $core;
@@ -19,9 +21,46 @@ const TechwolfChatProtocol$json = {
   '2': [
     {'1': 'type', '3': 1, '4': 1, '5': 5, '10': 'type'},
     {'1': 'version', '3': 2, '4': 1, '5': 9, '10': 'version'},
-    {'1': 'messages', '3': 3, '4': 3, '5': 11, '6': '.techwolf.TechwolfMessage', '10': 'messages'},
-    {'1': 'presence', '3': 4, '4': 1, '5': 11, '6': '.techwolf.TechwolfPresence', '10': 'presence'},
-    {'1': 'messageRead', '3': 8, '4': 1, '5': 11, '6': '.techwolf.TechwolfMessageRead', '10': 'messageRead'},
+    {
+      '1': 'messages',
+      '3': 3,
+      '4': 3,
+      '5': 11,
+      '6': '.techwolf.TechwolfMessage',
+      '10': 'messages'
+    },
+    {
+      '1': 'presence',
+      '3': 4,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfPresence',
+      '10': 'presence'
+    },
+    {
+      '1': 'iq',
+      '3': 5,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfIq',
+      '10': 'iq'
+    },
+    {
+      '1': 'iqResponse',
+      '3': 6,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfIq',
+      '10': 'iqResponse'
+    },
+    {
+      '1': 'messageRead',
+      '3': 8,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfMessageRead',
+      '10': 'messageRead'
+    },
     {'1': 'domain', '3': 10, '4': 1, '5': 5, '10': 'domain'},
   ],
 };
@@ -31,19 +70,78 @@ final $typed_data.Uint8List techwolfChatProtocolDescriptor = $convert.base64Deco
     'ChRUZWNod29sZkNoYXRQcm90b2NvbBISCgR0eXBlGAEgASgFUgR0eXBlEhgKB3ZlcnNpb24YAi'
     'ABKAlSB3ZlcnNpb24SNQoIbWVzc2FnZXMYAyADKAsyGS50ZWNod29sZi5UZWNod29sZk1lc3Nh'
     'Z2VSCG1lc3NhZ2VzEjYKCHByZXNlbmNlGAQgASgLMhoudGVjaHdvbGYuVGVjaHdvbGZQcmVzZW'
-    '5jZVIIcHJlc2VuY2USPwoLbWVzc2FnZVJlYWQYCCABKAsyHS50ZWNod29sZi5UZWNod29sZk1l'
-    'c3NhZ2VSZWFkUgttZXNzYWdlUmVhZBIWCgZkb21haW4YCiABKAVSBmRvbWFpbg==');
+    '5jZVIIcHJlc2VuY2USJAoCaXEYBSABKAsyFC50ZWNod29sZi5UZWNod29sZklxUgJpcRI0Cgpp'
+    'cVJlc3BvbnNlGAYgASgLMhQudGVjaHdvbGYuVGVjaHdvbGZJcVIKaXFSZXNwb25zZRI/CgttZX'
+    'NzYWdlUmVhZBgIIAEoCzIdLnRlY2h3b2xmLlRlY2h3b2xmTWVzc2FnZVJlYWRSC21lc3NhZ2VS'
+    'ZWFkEhYKBmRvbWFpbhgKIAEoBVIGZG9tYWlu');
+
+@$core.Deprecated('Use techwolfIqDescriptor instead')
+const TechwolfIq$json = {
+  '1': 'TechwolfIq',
+  '2': [
+    {'1': 'qid', '3': 1, '4': 1, '5': 3, '10': 'qid'},
+    {'1': 'query', '3': 2, '4': 1, '5': 9, '10': 'query'},
+    {
+      '1': 'params',
+      '3': 3,
+      '4': 3,
+      '5': 11,
+      '6': '.techwolf.TechwolfStringPair',
+      '10': 'params'
+    },
+  ],
+};
+
+/// Descriptor for `TechwolfIq`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List techwolfIqDescriptor = $convert.base64Decode(
+    'CgpUZWNod29sZklxEhAKA3FpZBgBIAEoA1IDcWlkEhQKBXF1ZXJ5GAIgASgJUgVxdWVyeRI0Cg'
+    'ZwYXJhbXMYAyADKAsyHC50ZWNod29sZi5UZWNod29sZlN0cmluZ1BhaXJSBnBhcmFtcw==');
+
+@$core.Deprecated('Use techwolfStringPairDescriptor instead')
+const TechwolfStringPair$json = {
+  '1': 'TechwolfStringPair',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {'1': 'value', '3': 2, '4': 1, '5': 9, '10': 'value'},
+  ],
+};
+
+/// Descriptor for `TechwolfStringPair`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List techwolfStringPairDescriptor = $convert.base64Decode(
+    'ChJUZWNod29sZlN0cmluZ1BhaXISEAoDa2V5GAEgASgJUgNrZXkSFAoFdmFsdWUYAiABKAlSBX'
+    'ZhbHVl');
 
 @$core.Deprecated('Use techwolfMessageDescriptor instead')
 const TechwolfMessage$json = {
   '1': 'TechwolfMessage',
   '2': [
-    {'1': 'from', '3': 1, '4': 1, '5': 11, '6': '.techwolf.TechwolfUser', '10': 'from'},
-    {'1': 'to', '3': 2, '4': 1, '5': 11, '6': '.techwolf.TechwolfUser', '10': 'to'},
+    {
+      '1': 'from',
+      '3': 1,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfUser',
+      '10': 'from'
+    },
+    {
+      '1': 'to',
+      '3': 2,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfUser',
+      '10': 'to'
+    },
     {'1': 'type', '3': 3, '4': 1, '5': 5, '10': 'type'},
     {'1': 'mid', '3': 4, '4': 1, '5': 3, '10': 'mid'},
     {'1': 'time', '3': 5, '4': 1, '5': 3, '10': 'time'},
-    {'1': 'body', '3': 6, '4': 1, '5': 11, '6': '.techwolf.TechwolfMessageBody', '10': 'body'},
+    {
+      '1': 'body',
+      '3': 6,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfMessageBody',
+      '10': 'body'
+    },
     {'1': 'offline', '3': 7, '4': 1, '5': 8, '10': 'offline'},
     {'1': 'received', '3': 8, '4': 1, '5': 8, '10': 'received'},
     {'1': 'pushText', '3': 9, '4': 1, '5': 9, '10': 'pushText'},
@@ -82,7 +180,14 @@ const TechwolfMessageBody$json = {
     {'1': 'type', '3': 1, '4': 1, '5': 5, '10': 'type'},
     {'1': 'templateId', '3': 2, '4': 1, '5': 5, '10': 'templateId'},
     {'1': 'text', '3': 3, '4': 1, '5': 9, '10': 'text'},
-    {'1': 'jobCard', '3': 10, '4': 1, '5': 11, '6': '.techwolf.TechwolfJobCard', '10': 'jobCard'},
+    {
+      '1': 'jobCard',
+      '3': 10,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfJobCard',
+      '10': 'jobCard'
+    },
   ],
 };
 
@@ -106,7 +211,14 @@ const TechwolfJobCard$json = {
     {'1': 'degree', '3': 8, '4': 1, '5': 9, '10': 'degree'},
     {'1': 'location', '3': 9, '4': 1, '5': 9, '10': 'location'},
     {'1': 'bossTitle', '3': 10, '4': 1, '5': 9, '10': 'bossTitle'},
-    {'1': 'boss', '3': 11, '4': 1, '5': 11, '6': '.techwolf.TechwolfUser', '10': 'boss'},
+    {
+      '1': 'boss',
+      '3': 11,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfUser',
+      '10': 'boss'
+    },
     {'1': 'footer', '3': 14, '4': 1, '5': 9, '10': 'footer'},
     {'1': 'tag', '3': 15, '4': 1, '5': 9, '10': 'tag'},
     {'1': 'expectId', '3': 19, '4': 1, '5': 3, '10': 'expectId'},
@@ -151,10 +263,30 @@ const TechwolfPresence$json = {
   '2': [
     {'1': 'type', '3': 1, '4': 1, '5': 5, '10': 'type'},
     {'1': 'uid', '3': 2, '4': 1, '5': 3, '10': 'uid'},
-    {'1': 'clientInfo', '3': 3, '4': 1, '5': 11, '6': '.techwolf.TechwolfClientInfo', '10': 'clientInfo'},
-    {'1': 'clientTime', '3': 4, '4': 1, '5': 11, '6': '.techwolf.TechwolfClientTime', '10': 'clientTime'},
+    {
+      '1': 'clientInfo',
+      '3': 3,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfClientInfo',
+      '10': 'clientInfo'
+    },
+    {
+      '1': 'clientTime',
+      '3': 4,
+      '4': 1,
+      '5': 11,
+      '6': '.techwolf.TechwolfClientTime',
+      '10': 'clientTime'
+    },
     {'1': 'lastMessageId', '3': 5, '4': 1, '5': 3, '10': 'lastMessageId'},
-    {'1': 'lastGroupMessageId', '3': 6, '4': 1, '5': 3, '10': 'lastGroupMessageId'},
+    {
+      '1': 'lastGroupMessageId',
+      '3': 6,
+      '4': 1,
+      '5': 3,
+      '10': 'lastGroupMessageId'
+    },
     {'1': 'userId', '3': 7, '4': 1, '5': 3, '10': 'userId'},
   ],
 };
@@ -233,4 +365,3 @@ final $typed_data.Uint8List techwolfMessageReadDescriptor = $convert.base64Decod
     'VJZBgCIAEoA1IJbWVzc2FnZUlkEhoKCHJlYWRUaW1lGAMgASgDUghyZWFkVGltZRISCgRzeW5j'
     'GAQgASgIUgRzeW5jEh4KCnVzZXJTb3VyY2UYBSABKAVSCnVzZXJTb3VyY2USIAoLb3duZXJTb3'
     'VyY2UYBiABKAVSC293bmVyU291cmNl');
-
