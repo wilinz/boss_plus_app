@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Xcode SwiftPM 解析产物
+**/xcshareddata/swiftpm/
