@@ -46,3 +46,6 @@ app.*.map.json
 
 # Xcode SwiftPM 解析产物
 **/xcshareddata/swiftpm/
+
+# 本地登录会话(含 token,勿提交)
+cli/.boss_session.json
