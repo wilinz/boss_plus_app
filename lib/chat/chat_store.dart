@@ -19,6 +19,9 @@ class ChatStore {
     'conversations': <dynamic>[],
     'messages': <String, dynamic>{},
     'lastRead': <String, dynamic>{}, // peer -> 已读到的最大 msgId(未读水位)
+    'convMeta': <String, dynamic>{}, // peer -> 会话元数据(最后消息/时间/未读水位,消息流派生)
+    'cards': <String, dynamic>{}, // peer -> 名片(getBaseInfo:名字/公司/岗位/头像)
+    'syncMaxMsgId': 0, // 已同步到的最大 msgId(presence 增量游标)
   };
 
   /// 绑定账号并载入本地数据(登录/连接后调用)。
@@ -66,6 +69,46 @@ class ChatStore {
 
   Future<void> saveLastRead(Map<int, int> lastRead) async {
     _data['lastRead'] = lastRead.map((k, v) => MapEntry('$k', v));
+    await _flush();
+  }
+
+  // ---- 会话元数据(peer -> 最后消息/时间,消息流派生) ----
+  Map<int, Map<String, dynamic>> get convMeta {
+    final m = (_data['convMeta'] as Map?) ?? const {};
+    final out = <int, Map<String, dynamic>>{};
+    m.forEach((k, v) {
+      final id = int.tryParse('$k');
+      if (id != null && v is Map) out[id] = Map<String, dynamic>.from(v);
+    });
+    return out;
+  }
+
+  Future<void> saveConvMeta(Map<int, Map<String, dynamic>> meta) async {
+    _data['convMeta'] = meta.map((k, v) => MapEntry('$k', v));
+    await _flush();
+  }
+
+  // ---- 名片缓存(peer -> getBaseInfo 展示字段) ----
+  Map<int, Map<String, dynamic>> get cards {
+    final m = (_data['cards'] as Map?) ?? const {};
+    final out = <int, Map<String, dynamic>>{};
+    m.forEach((k, v) {
+      final id = int.tryParse('$k');
+      if (id != null && v is Map) out[id] = Map<String, dynamic>.from(v);
+    });
+    return out;
+  }
+
+  Future<void> saveCards(Map<int, Map<String, dynamic>> cards) async {
+    _data['cards'] = cards.map((k, v) => MapEntry('$k', v));
+    await _flush();
+  }
+
+  // ---- 同步游标(presence lastMessageId 增量) ----
+  int get syncMaxMsgId => (_data['syncMaxMsgId'] as num?)?.toInt() ?? 0;
+
+  Future<void> saveSyncMaxMsgId(int v) async {
+    _data['syncMaxMsgId'] = v;
     await _flush();
   }
 

@@ -1,8 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:math';
 
-import 'package:boss_plus/boss_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -126,205 +123,171 @@ class ContactListController extends GetxController {
   final error = ''.obs;
   final contacts = <Contact>[].obs;
 
-  // 分页:id 列表一次拿全,详情按页(每页 [_pageSize])懒加载,滚到底再拉。
+  // 会话列表现在由消息流(ImService.conversations)派生,不再分页拉 chatHistory。
+  // 保留 hasMore/loadMore 仅为兼容视图(始终 false)。
   final hasMore = false.obs;
   final loadingMore = false.obs;
   static const _pageSize = 20;
-  List<int> _zp = const [], _dz = const [], _peer = const [];
-  int _zi = 0, _di = 0, _pi = 0; // 各桶已消费游标
-  final _loadedIds = <int>{};
-  dynamic _boss;
 
-  StreamSubscription<ImMessage>? _sub;
+  dynamic _boss;
+  // peer -> 名片(getBaseInfo 展示字段),缓存并持久化。
+  final _cards = <int, Map<String, dynamic>>{};
+  // peer -> friendSource 桶(0=zp,1=dz,2=peer),getBaseInfo 分桶用。
+  final _bucket = <int, int>{};
+  final _worker = <int>{}; // 正在拉名片的 peer,去重
+
+  Worker? _convWorker;
+  Worker? _unreadWorker;
+
+  ImService? get _im =>
+      Get.isRegistered<ImService>() ? ImService.to : null;
 
   @override
   void onInit() {
     super.onInit();
-    // 先上屏本地缓存的会话列表(秒开、离线可见),再 HTTP 刷新。
-    final cached = ChatStore.instance.conversations;
-    if (cached.isNotEmpty) {
-      contacts.assignAll(cached.map(Contact.fromStore));
-      _sortByTime();
-      loading.value = false;
+    // 载入名片缓存,先用「缓存名片 + 会话流」上屏(秒开)。
+    for (final e in ChatStore.instance.cards.entries) {
+      _cards[e.key] = e.value;
+      final fs = (e.value['friendSource'] as num?)?.toInt();
+      if (fs != null) _bucket[e.key] = fs;
+    }
+    _rebuild();
+    loading.value = contacts.isEmpty;
+    // 会话表/未读变化即重建列表(实时刷新的正解:数据在 ImService,UI 只投影)。
+    final im = _im;
+    if (im != null) {
+      _convWorker = ever(im.conversations, (_) => _rebuild());
+      _unreadWorker = ever(im.unread, (_) => contacts.refresh());
     }
     load();
-    // 实时:收到新消息就更新对应会话的预览+时间并置顶;新联系人则整体刷新。
-    if (Get.isRegistered<ImService>()) {
-      _sub = ImService.to.incoming.listen(_onMessage);
-    }
-  }
-
-  /// 会话列表持久化到本地。
-  void _persist() =>
-      ChatStore.instance.saveConversations(contacts.map((c) => c.toStore()).toList());
-
-  /// 按最后消息时间倒序(最新在上)。分页/填预览/缓存后都需重排 —— 会话来源 id
-  /// 是按类型分组的,并非全局时间序,不排就会出现「7月19、23、24…」乱序。
-  void _sortByTime() =>
-      contacts.sort((a, b) => b.datetime.compareTo(a.datetime));
-
-  void _onMessage(ImMessage m) {
-    if (m.text == null) return;
-    final myUid = ImService.to.myUid;
-    // 对方 = 消息里非我方的一端。
-    final peer = m.fromUid == myUid ? m.toUid : m.fromUid;
-    final idx = contacts.indexWhere((c) => c.friendId == peer);
-    if (idx < 0) {
-      // 新会话(如刚发起沟通),整体刷新。
-      load();
-      return;
-    }
-    final c = contacts[idx];
-    c.lastMessage = m.text!;
-    c.lastMine = m.fromUid == myUid;
-    if (m.time > 0) c.datetime = m.time;
-    // 置顶。
-    contacts
-      ..removeAt(idx)
-      ..insert(0, c);
-    contacts.refresh();
-    _persist();
   }
 
   @override
   void onClose() {
-    _sub?.cancel();
+    _convWorker?.dispose();
+    _unreadWorker?.dispose();
     super.onClose();
   }
 
-  /// 刷新:重取 id 列表并加载第一页。
+  /// 刷新:拉 friendId 分桶(确定会话全集 + 桶),补名片,重建列表。
+  /// 会话的最后一条/时间/未读来自消息流(ImService),同步在后台进行。
   Future<void> load() async {
-    loading.value = true;
     error.value = '';
     try {
       _boss = await BossProvider.instance.get();
-      // 1) id 列表(三类,已按最近互动排序)。
       final ids = await _boss.contactFriendIds();
-      _zp = ids.zp;
-      _dz = ids.dz;
-      _peer = ids.peer;
-      _zi = _di = _pi = 0;
-      _loadedIds.clear();
-      contacts.clear();
-      final any = _zp.isNotEmpty || _dz.isNotEmpty || _peer.isNotEmpty;
-      hasMore.value = any;
-      // 2) 第一页详情。
-      if (any) await _fetchNextPage();
+      _bucket.clear();
+      for (final id in ids.zp) {
+        _bucket[id] = 0;
+      }
+      for (final id in ids.dz) {
+        _bucket[id] = 1;
+      }
+      for (final id in ids.peer) {
+        _bucket[id] = 2;
+      }
+      _rebuild();
       loading.value = false;
-      if (!any) _persist();
+      // 后台补名片(仅缺失的),完成后重建。
+      final need = _bucket.keys.where((p) => !_cards.containsKey(p)).toList();
+      unawaited(_fetchCards(need));
+      // 后台兜底最后一条:MQTT 存量补推(/message/pull)冷启常不来,用 HTTP 单聊历史补。
+      unawaited(_im?.backfillLastMessages(Map.of(_bucket)) ?? Future.value());
     } catch (e) {
-      error.value = '加载会话失败: $e';
+      error.value = contacts.isEmpty ? '加载会话失败: $e' : '';
       loading.value = false;
     }
   }
 
-  /// 滚到底触发:加载下一页。
-  Future<void> loadMore() async {
-    if (loadingMore.value || !hasMore.value || loading.value) return;
-    loadingMore.value = true;
+  Future<void> loadMore() async {}
+
+  /// 会话全集 = friendId 分桶 ∪ 消息流里出现过的 peer。据此 + 名片 + 会话元数据组装并排序。
+  void _rebuild() {
+    final im = _im;
+    final convs = im?.conversations ?? <int, ImConversation>{}.obs;
+    final peers = <int>{..._bucket.keys, ...convs.keys};
+    final list = <Contact>[];
+    for (final peer in peers) {
+      if (peer <= 0) continue;
+      final card = _cards[peer];
+      final conv = convs[peer];
+      final c = Contact(
+        friendId: peer,
+        name: (card?['name'] as String?)?.isNotEmpty == true
+            ? card!['name'] as String
+            : (conv?.peerName.isNotEmpty == true ? conv!.peerName : '对方'),
+        avatar: (card?['avatar'] as String?) ?? '',
+        company: (card?['company'] as String?) ?? '',
+        jobName: (card?['jobName'] as String?) ?? '',
+        salaryDesc: (card?['salaryDesc'] as String?) ?? '',
+        securityId: (card?['securityId'] as String?) ?? '',
+        friendSource: _bucket[peer] ?? 0,
+        datetime: conv?.lastTime ??
+            (card?['datetime'] as num?)?.toInt() ??
+            0,
+      );
+      c.lastMessage = conv?.lastText ?? '';
+      c.lastMine = conv?.lastMine ?? false;
+      list.add(c);
+    }
+    list.sort((a, b) => b.datetime.compareTo(a.datetime));
+    contacts.assignAll(list);
+  }
+
+  /// 批量拉名片(按桶分组,每批 [_pageSize]),写缓存并持久化,完成后重建。
+  Future<void> _fetchCards(List<int> peers) async {
+    final todo = peers.where((p) => _worker.add(p)).toList();
+    if (todo.isEmpty || _boss == null) return;
     try {
-      await _fetchNextPage();
+      // 按桶分组。
+      final byBucket = <int, List<int>>{0: [], 1: [], 2: []};
+      for (final p in todo) {
+        (byBucket[_bucket[p] ?? 2] ??= []).add(p);
+      }
+      for (final entry in byBucket.entries) {
+        final bucket = entry.key;
+        final slice = entry.value;
+        for (var i = 0; i < slice.length; i += _pageSize) {
+          final part = slice.sublist(
+              i, (i + _pageSize).clamp(0, slice.length));
+          final infos = await _boss.contactBaseInfo(
+            friendIds: bucket == 0 ? part : const <int>[],
+            dzFriendIds: bucket == 1 ? part : const <int>[],
+            peerFriendIds: bucket == 2 ? part : const <int>[],
+          );
+          for (final m in infos) {
+            final id = (m['friendId'] as num?)?.toInt();
+            if (id == null) continue;
+            _cards[id] = _cardOf(m, bucket);
+          }
+          _rebuild();
+        }
+      }
+      await ChatStore.instance.saveCards(_cards);
     } catch (_) {
     } finally {
-      loadingMore.value = false;
+      _worker.removeAll(todo);
     }
   }
 
-  /// 取下一页 id(zp→dz→peer 顺序,每页 [_pageSize]),拉详情并追加。
-  Future<void> _fetchNextPage() async {
-    List<int> slice = const [];
-    var bucket = -1;
-    if (_zi < _zp.length) {
-      final end = min(_zi + _pageSize, _zp.length);
-      slice = _zp.sublist(_zi, end);
-      _zi = end;
-      bucket = 0;
-    } else if (_di < _dz.length) {
-      final end = min(_di + _pageSize, _dz.length);
-      slice = _dz.sublist(_di, end);
-      _di = end;
-      bucket = 1;
-    } else if (_pi < _peer.length) {
-      final end = min(_pi + _pageSize, _peer.length);
-      slice = _peer.sublist(_pi, end);
-      _pi = end;
-      bucket = 2;
-    }
-    if (slice.isEmpty) {
-      hasMore.value = false;
-      return;
-    }
-    final list = await _boss.contactBaseInfo(
-      friendIds: bucket == 0 ? slice : const <int>[],
-      dzFriendIds: bucket == 1 ? slice : const <int>[],
-      peerFriendIds: bucket == 2 ? slice : const <int>[],
-    );
-    // 按请求的 id 顺序还原(getBaseInfo 返回未必有序),并去重。
-    final byId = <int, Map<String, dynamic>>{};
-    for (final m in list) {
-      final id = (m['friendId'] as num?)?.toInt();
-      if (id != null) byId[id] = m;
-    }
-    final cs = <Contact>[];
-    for (final id in slice) {
-      final m = byId[id];
-      if (m != null && _loadedIds.add(id)) cs.add(Contact.fromMap(m));
-    }
-    contacts.addAll(cs);
-    _sortByTime();
-    hasMore.value = _zi < _zp.length || _di < _dz.length || _pi < _peer.length;
-    _persist();
-    // 后台补最近消息预览(不阻塞)。
-    _fillLastMessages(_boss, cs);
-  }
-
-  /// 每个联系人拉最新几条消息,取真正最新一条(任意类型)生成预览,填好后刷新列表。
-  Future<void> _fillLastMessages(dynamic boss, List<Contact> cs) async {
-    await Future.wait(cs.map((ct) async {
-      try {
-        final page = await boss.chatHistory(
-          friendId: ct.friendId,
-          friendSource: ct.friendSource,
-          securityId: ct.securityId,
-          count: 10,
-        );
-        final all = <ImMessage>[];
-        for (final b64 in page.messages) {
-          all.addAll(ChatProtocol.decode(base64.decode(b64)).messages);
-        }
-        if (all.isEmpty) return;
-        all.sort((a, b) => a.time.compareTo(b.time));
-        // 优先取最后一条有文本的(官方列表显示的是文字消息,非系统卡片);
-        // 完全没文本才退回最新一条的类型摘要。
-        ImMessage? lastText;
-        for (final m in all) {
-          if (m.text != null && m.text!.isNotEmpty) lastText = m;
-        }
-        final pick = lastText ?? all.last;
-        ct.lastMessage = _preview(pick);
-        ct.lastMine = pick.fromUid != ct.friendId;
-        // 用真正最新一条(任意类型)的时间校准会话时间,让排序更准。
-        if (all.last.time > ct.datetime) ct.datetime = all.last.time;
-        // 用这段历史算未读(比已读水位新的对方消息)。
-        if (Get.isRegistered<ImService>()) {
-          ImService.to.applyHistory(ct.friendId, all);
-        }
-      } catch (_) {}
-    }));
-    _sortByTime();
-    contacts.refresh();
-    _persist();
-  }
-
-  /// 任意消息类型 → 预览文字。文本直接显示,其它给类型摘要。
-  static String _preview(ImMessage m) {
-    if (m.text != null && m.text!.isNotEmpty) return m.text!;
-    return switch (m.contentType) {
-      ContentType.image => '[图片]',
-      ContentType.sound => '[语音]',
-      ContentType.jobCard => '[职位]',
-      ContentType.resume => '[简历]',
-      _ => '[消息]',
+  /// getBaseInfo 原始 Map → 精简名片(展示字段)。
+  static Map<String, dynamic> _cardOf(Map<String, dynamic> m, int bucket) {
+    String s(dynamic v) => (v ?? '').toString();
+    final tiny = s(m['tinyUrl']);
+    final headImg = (m['headImg'] as num?)?.toInt() ?? 0;
+    return {
+      'name': s(m['name']),
+      'avatar': tiny.isNotEmpty
+          ? tiny
+          : 'https://img.bosszhipin.com/boss/avatar/avatar_$headImg.png',
+      'company': s(m['company'] ?? m['brandName']),
+      'jobName': s(m['jobName'] ?? m['positionName']),
+      'salaryDesc': s(m['salaryDesc']),
+      'securityId': s(m['securityId']),
+      'friendSource': bucket,
+      'datetime': (m['datetime'] as num?)?.toInt() ??
+          (m['addTime'] as num?)?.toInt() ??
+          0,
     };
   }
 }

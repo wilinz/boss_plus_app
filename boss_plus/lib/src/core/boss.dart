@@ -441,6 +441,37 @@ class Boss extends BaseClient {
     );
   }
 
+  /// 离线消息续拉(会话同步第二段):`GET /api/zpmsg/history/pull`。
+  ///
+  /// 同步机制:连上后 presence 带 PULL
+  /// 位(§0.5:type=768 = ONLINE|PULL)触发 broker 下推首批 type=1 + 一个 type=4
+  /// `/message/pull` 控制包(`{hasMore,lastId,secretId}`);若 `hasMore` 则用本接口
+  /// 按游标 `lastId`/`secretId` 逐页 HTTP 拉全,直到 `hasMore=false`。
+  ///
+  /// 响应 `zpData { stringList:[base64 信封...], hasMore, lastId, secretId }`,每条
+  /// base64 与实时 type=1 同结构,直接 `ChatProtocol.decode`。会话列表由这些消息按
+  /// peer 聚合得到(最后一条/时间/未读),getBaseInfo 只补名片。
+  Future<({List<String> messages, bool hasMore, int lastId, String secretId})>
+      pullHistory({required int lastId, required String secretId}) async {
+    final resp = await dio.get(
+      '/api/zpmsg/history/pull',
+      queryParameters: {'lastId': lastId, 'secretId': secretId},
+    );
+    final zp = _zpData(resp.data);
+    final list = zp['stringList'];
+    final messages = <String>[
+      if (list is List)
+        for (final m in list)
+          if (m is String) m,
+    ];
+    return (
+      messages: messages,
+      hasMore: zp['hasMore'] == true,
+      lastId: (zp['lastId'] as num?)?.toInt() ?? 0,
+      secretId: (zp['secretId'] as String?) ?? '',
+    );
+  }
+
   /// 会话列表 id(第一段):`POST /api/zprelation/friend/getFriendIdListV1`。
   ///
   /// 返回三类联系人的 id(含 waterLevel 版本水位):

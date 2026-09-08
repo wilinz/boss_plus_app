@@ -241,11 +241,26 @@ class ChatProtocol {
 
   // ---- 解码:入站信封 ----
 
-  /// 解析入站信封,返回 (type, 携带的聊天消息列表)。只解 type=1 的聊天消息。
-  static ({int type, List<ImMessage> messages}) decode(Uint8List data) {
+  /// 解析入站信封,返回 (type, 消息列表, 控制响应)。
+  ///
+  /// - `messages`:type=1 聊天消息(在线推送 / 同步下推都在 `messages` 字段)。
+  /// - `iqQuery`/`iqResults`:type=4 IQ 响应(信封 field 6)。会话同步的
+  ///   `/message/pull` 控制包即在此:`iqResults` 含 `hasMore`/`lastId`/`secretId`,
+  ///   由 [BossIm] 据此驱动 HTTP 续拉(`Boss.pullHistory`)。
+  static ({
+    int type,
+    List<ImMessage> messages,
+    String? iqQuery,
+    Map<String, String> iqResults,
+  }) decode(Uint8List data) {
     final env = TechwolfChatProtocol.fromBuffer(data);
-    if (env.type != ImType.chat) {
-      return (type: env.type, messages: const []);
+    // 控制响应(type=4):同步分页/其它 IQ 结果。任何 type 都尝试解出。
+    String? iqQuery;
+    var iqResults = const <String, String>{};
+    if (env.hasIqResponse()) {
+      final iq = env.iqResponse;
+      iqQuery = iq.hasQuery() ? iq.query : null;
+      iqResults = {for (final p in iq.params) p.key: p.value};
     }
     final msgs = <ImMessage>[];
     for (final m in env.messages) {
@@ -267,7 +282,7 @@ class ChatProtocol {
         time: m.time.toInt(),
       ));
     }
-    return (type: env.type, messages: msgs);
+    return (type: env.type, messages: msgs, iqQuery: iqQuery, iqResults: iqResults);
   }
 
   /// 生成的 TechwolfJobCard → 轻量 JobCard(UI 用)。

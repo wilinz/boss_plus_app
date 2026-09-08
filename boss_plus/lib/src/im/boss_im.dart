@@ -90,6 +90,18 @@ class BossIm {
   /// 入站聊天消息流(已解出的 type=1 文本/卡片等)。
   Stream<ImMessage> get messages => _incoming.stream;
 
+  final _controls =
+      StreamController<({String query, Map<String, String> results})>.broadcast();
+
+  /// 入站控制流(type=4 IQ 响应)。会话同步的 `/message/pull` 控制包
+  /// (`{hasMore,lastId,secretId}`)经此上抛,由上层驱动 HTTP 续拉。
+  Stream<({String query, Map<String, String> results})> get controls =>
+      _controls.stream;
+
+  /// 连接时 presence 携带的同步游标(= 本地已同步到的最大 msgId)。
+  /// 0 = 全量补推(首次);持久化后可传上次的最大值做增量。见 §0.5 PULL 位。
+  int syncFromMsgId = 0;
+
   bool get connected =>
       _client?.connectionStatus?.state == MqttConnectionState.connected;
 
@@ -201,6 +213,7 @@ class BossIm {
   Future<void> disconnect() async {
     _client?.disconnect();
     await _incoming.close();
+    await _controls.close();
   }
 
   // ---- 内部 ----
@@ -229,7 +242,7 @@ class BossIm {
       appId: int.tryParse(appConfig.appId) ?? 1003,
       nowMs: now,
       sessionStartMs: _sessionStart,
-      lastMessageId: 0,
+      lastMessageId: syncFromMsgId,
       longitude: longitude,
       latitude: latitude,
     );
@@ -255,6 +268,12 @@ class BossIm {
           if (m.fromUid != uid && m.msgId != 0) {
             sendRead(friendUid: m.fromUid, msgId: m.msgId);
           }
+        }
+        // type=4 控制响应(会话同步 /message/pull 分页等)。
+        final q = decoded.iqQuery;
+        if (q != null && q.isNotEmpty) {
+          bossLog('IM 控制 query=$q results=${decoded.iqResults}', tag: 'im');
+          _controls.add((query: q, results: decoded.iqResults));
         }
       } catch (err) {
         bossLog('入站解析失败: $err', tag: 'im');
