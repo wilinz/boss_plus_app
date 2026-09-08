@@ -1,0 +1,22 @@
+PODS:
+  - Flutter (1.0.0)
+  - pdfx (1.0.0):
+    - Flutter
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - pdfx (from `.symlinks/plugins/pdfx/ios`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  pdfx:
+    :path: ".symlinks/plugins/pdfx/ios"
+
+SPEC CHECKSUMS:
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  pdfx: 77f4dddc48361fbb01486fa2bdee4532cbb97ef3
+
+PODFILE CHECKSUM: 3ba3a73b1b12adcf321a227a745625fe0888cc82
+
+COCOAPODS: 1.16.2
