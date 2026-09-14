@@ -64,9 +64,9 @@ class HaitouPage extends StatelessWidget {
                   const Text('随机间隔'),
                   Expanded(
                     child: RangeSlider(
-                      min: 5,
+                      min: 1,
                       max: 120,
-                      divisions: 115,
+                      divisions: 119,
                       labels: RangeLabels('${c.minInterval.value}s',
                           '${c.maxInterval.value}s'),
                       values: RangeValues(c.minInterval.value.toDouble(),

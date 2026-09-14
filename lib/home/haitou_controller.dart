@@ -141,8 +141,8 @@ class HaitouController extends GetxController {
     (label: '≥10000人', min: 10000),
   ];
   // 沟通间隔:每次在 [minInterval, maxInterval] 秒内随机取值(避免固定节奏被风控)。
-  final minInterval = 8.obs;
-  final maxInterval = 15.obs;
+  final minInterval = 3.obs;
+  final maxInterval = 8.obs;
 
   /// 目标沟通数,达到即停(0=不限)。平台每日上限约 150。
   final targetCount = 150.obs;
@@ -442,6 +442,10 @@ class HaitouController extends GetxController {
     final boss = await BossProvider.instance.get();
     var consecutiveFail = 0;
     var restRounds = 0; // 连续触发限流的次数(用于退避与兜底停止)
+    // 上一个职位已经打过 BOSS 接口(详情/沟通)但没等过间隔:可能是被详情过滤、
+    // 沟通失败或异常,这些路径都 continue 掉了循环末尾的等待。用这个标记把欠下的
+    // 间隔补在「下一次真正发请求之前」,避免不符合条件的公司被连续快打触发风控。
+    var pendingPace = false;
     while (running.value) {
       // 达到目标即停(平台每日上限约 150)。
       if (targetCount.value > 0 && done.value >= targetCount.value) {
@@ -454,6 +458,7 @@ class HaitouController extends GetxController {
           current.value = '加载更多职位…';
           await home.loadMore();
           await _paceRequest(); // 翻页也是 BOSS 请求,别紧接着再打详情
+          pendingPace = false;
           if (_cursor >= home.jobs.length) {
             _log('没有更多职位了');
             break;
@@ -539,6 +544,13 @@ class HaitouController extends GetxController {
       current.value = '${job.jobName} @ ${job.brandName}';
       var greeted = false;
       try {
+        // 补上一个职位欠下的间隔,再打这一次的接口。
+        if (pendingPace) {
+          await _paceRequest();
+          pendingPace = false;
+          if (!running.value) break;
+        }
+        pendingPace = true; // 即将请求详情:在等到间隔前不许再发下一个请求
         final d = await boss.queryJobDetail(
             securityId: job.securityId, lid: home.lid.value);
         // 列表无活跃度字段时,用详情里的 BOSS 活跃度兜底判断。
@@ -547,7 +559,6 @@ class HaitouController extends GetxController {
             !_isRecentActive(d.bossActiveDesc)) {
           filtered.value++;
           _log('🚫 过滤(不活跃 ${d.bossActiveDesc}): ${job.jobName}');
-          await _paceRequest();
           continue;
         }
         // 详情正文关键词过滤:用独立的一组关键词,匹配职位描述/标签/行业/公司全名。
@@ -560,13 +571,11 @@ class HaitouController extends GetxController {
           if (dEx.any(detailHay.contains)) {
             filtered.value++;
             _log('🚫 过滤(详情含排除词): ${job.jobName}');
-            await _paceRequest();
             continue;
           }
           if (dInc.isNotEmpty && !dInc.any(detailHay.contains)) {
             filtered.value++;
             _log('🚫 过滤(详情不含关键词): ${job.jobName}');
-            await _paceRequest();
             continue;
           }
         }
@@ -605,6 +614,7 @@ class HaitouController extends GetxController {
           final wait = restSeconds.value * (restRounds > 3 ? 3 : restRounds);
           _log('😴 触发限流(第 $restRounds 次),休息 ${wait}s 后继续:$msg');
           await _sleep(wait);
+          pendingPace = false;
           continue;
         } else if (msg.contains('已') &&
             (msg.contains('沟通') || msg.contains('聊'))) {
@@ -631,13 +641,15 @@ class HaitouController extends GetxController {
         }
       }
 
-      // 仅在真正发起沟通后等待随机间隔(跳过/异常不空耗)。
+      // 发起沟通 → 完整随机间隔。其余打过接口的路径由 pendingPace 在下次请求前补等待;
+      // 纯本地过滤(关键词/薪资/规模/列表活跃度)没打接口,不空耗。
       if (greeted) {
         final lo = minInterval.value;
         final hi = maxInterval.value < lo ? lo : maxInterval.value;
         final iv = lo + _rand.nextInt(hi - lo + 1);
         _log('⏳ 等待 ${iv}s');
         await _sleep(iv);
+        pendingPace = false;
       }
     }
   }
