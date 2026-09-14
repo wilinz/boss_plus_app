@@ -146,6 +146,15 @@ class HaitouController extends GetxController {
 
   /// 目标沟通数,达到即停(0=不限)。平台每日上限约 150。
   final targetCount = 150.obs;
+  /// 当天(本机自然日)累计成功沟通数,跨重启持久化。
+  ///
+  /// [done] 是「本轮」计数,每次 start 都被 _resetProgress 清零;但目标数是按天算的。
+  /// 只看 done 的话,中途停一次再开就会从 0 重新投满 150,而实际当天早已接近平台上限
+  /// → 没到目标就一直撞限流。所以判「投满」要用这个按天累计值。
+  final todayDone = 0.obs;
+  String _doneDate = '';
+  static const _kDoneDate = 'haitou_done_date';
+  static const _kDoneCount = 'haitou_done_count';
   /// 触发「操作过于频繁」后的基础休息时长(秒);连续触发按倍数退避。
   final restSeconds = 300.obs;
   /// 连续限流最多休息这么多次,仍不行才停(防止无意义死循环)。
@@ -189,6 +198,9 @@ class HaitouController extends GetxController {
     aiModelCtrl.text = _prefs?.getString(_kAiModel) ?? 'gpt-5-nano';
     resumeCtrl.text = _prefs?.getString(_kAiResume) ?? '';
     aiBatchSize.value = _prefs?.getInt(_kAiBatch) ?? 10;
+    _doneDate = _prefs?.getString(_kDoneDate) ?? '';
+    todayDone.value = _prefs?.getInt(_kDoneCount) ?? 0;
+    _rollDaily();
   }
 
   void _saveKeywords() {
@@ -380,6 +392,29 @@ class HaitouController extends GetxController {
     super.onClose();
   }
 
+  /// 当天日期键(本机时区自然日)。
+  String _todayKey() {
+    final n = DateTime.now();
+    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
+  }
+
+  /// 跨天则把当天累计清零(过了零点按新的一天重新算额度)。
+  void _rollDaily() {
+    final today = _todayKey();
+    if (_doneDate == today) return;
+    _doneDate = today;
+    todayDone.value = 0;
+    _prefs?.setString(_kDoneDate, _doneDate);
+    _prefs?.setInt(_kDoneCount, 0);
+  }
+
+  /// 当天累计 +n 并立即落盘(防止进程被杀丢计数)。
+  Future<void> _bumpToday([int n = 1]) async {
+    _rollDaily();
+    todayDone.value += n;
+    await _prefs?.setInt(_kDoneCount, todayDone.value);
+  }
+
   Future<void> _saveContacted() async =>
       _prefs?.setStringList(_prefsKey, _contacted.toList());
 
@@ -422,6 +457,7 @@ class HaitouController extends GetxController {
 
   Future<void> start() async {
     if (running.value) return;
+    _rollDaily(); // 跨天先归零当天额度
     _resetProgress();
     _saveKeywords();
     _aiVerdicts.clear();
@@ -434,7 +470,7 @@ class HaitouController extends GetxController {
     } finally {
       running.value = false;
       current.value = '';
-      _log('⏹ 停止 — 成功 ${done.value} · 跳过 ${skipped.value} · 过滤 ${filtered.value} · 失败 ${failed.value}');
+      _log('⏹ 停止 — 成功 ${done.value}(今日 ${todayDone.value}) · 跳过 ${skipped.value} · 过滤 ${filtered.value} · 失败 ${failed.value}');
     }
   }
 
@@ -447,9 +483,9 @@ class HaitouController extends GetxController {
     // 间隔补在「下一次真正发请求之前」,避免不符合条件的公司被连续快打触发风控。
     var pendingPace = false;
     while (running.value) {
-      // 达到目标即停(平台每日上限约 150)。
-      if (targetCount.value > 0 && done.value >= targetCount.value) {
-        _log('🎯 已投满 ${done.value} 个,达到目标');
+      // 达到目标即停(按当天累计算,平台每日上限约 150)。
+      if (targetCount.value > 0 && todayDone.value >= targetCount.value) {
+        _log('🎯 今日已投 ${todayDone.value} 个,达到目标');
         break;
       }
       // 列表拉完了 → 翻页;无更多则结束。
@@ -590,6 +626,7 @@ class HaitouController extends GetxController {
         if (code == 0) {
           done.value++;
           greeted = true;
+          await _bumpToday();
           _contacted.add(key);
           await _saveContacted();
           _log('✅ ${job.jobName} @ ${job.brandName}');
@@ -597,6 +634,10 @@ class HaitouController extends GetxController {
           restRounds = 0;
         } else if (isDailyCapMessage(msg)) {
           // 每日沟通上限:要等到明天,休息重试没意义,直接收工。
+          // 顺手把当天累计顶到目标值,避免重启后又从 0 开始白撞上限。
+          if (targetCount.value > 0 && todayDone.value < targetCount.value) {
+            await _bumpToday(targetCount.value - todayDone.value);
+          }
           _log('🏁 今日已达平台上限,收工:$msg');
           break;
         } else if (msg.contains('频繁') ||

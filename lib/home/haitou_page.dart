@@ -32,6 +32,8 @@ class HaitouPage extends StatelessWidget {
                     Row(
                       children: [
                         _stat('已沟通', c.done.value, _teal),
+                        // 当天累计(跨重启保留),目标数按它判满。
+                        _stat('今日', c.todayDone.value, Colors.indigo),
                         _stat('跳过', c.skipped.value, Colors.orange),
                         _stat('过滤', c.filtered.value, Colors.purple),
                         _stat('失败', c.failed.value, Colors.red),
